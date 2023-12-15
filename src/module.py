@@ -1,7 +1,7 @@
 import math
 import torch
 from torch import nn
-
+import torch.nn.functional as F
 
 class PositionalEncoding(nn.Module):
     def __init__(self, max_len:int, embed_dim:int, dropout:float=0.1) -> None:
@@ -87,7 +87,7 @@ class PositionWiseFeedForward(nn.Module):
         super(PositionWiseFeedForward, self).__init__()
         self.FFN = nn.Sequential(
             nn.Linear(d_model, d_ff),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
@@ -167,3 +167,18 @@ class TransformerForSentimentAnalysis(nn.Module):
         out = self.fc(enc_outputs[:, 0, :])
 
         return out
+
+
+class SentimentModel(nn.Module):
+    def __init__(self, vocab_size:int, embed_dim:int, num_heads:int, d_ff:int, num_encoder_layers:int, num_classes:int, activation:torch.nn.functional=F.gelu, dropout:float=0.1):
+        super(SentimentModel, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        encoder_layers = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=num_heads, dim_feedforward=d_ff, activation=activation, batch_first=True, dropout=dropout)
+        self.transformer_encoder = nn.TransformerEncoder(encoder_layers, num_layers=num_encoder_layers)
+        self.fc = nn.Linear(embed_dim, num_classes)
+
+    def forward(self, x):
+        embedded = self.embedding(x)
+        transformer_output = self.transformer_encoder(embedded)
+        out = transformer_output.mean(dim=1)
+        return self.fc(out)
