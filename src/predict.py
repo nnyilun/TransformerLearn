@@ -5,7 +5,7 @@ from data import *
 device = 'cpu'
 print(f'device is {device}')
 
-vocab = load_vocab(path="../model/vocab64_nouseStopwords.pkl") 
+vocab = load_vocab(path="../model/2M_vocab_freq16_nouseStopwords.pkl") 
 print(len(vocab)) # vocab_len(47088)
 state_dict = torch.load("../model/model_statedict1212_02.pt")
 
