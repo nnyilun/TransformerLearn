@@ -13,13 +13,13 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f'cpu thread num: {cpu_threads}')
 print(f'device is {device}, cuda_device_0:{torch.cuda.get_device_name(0)}')
 
-df1 = read_comment_csv("../dataset/DMSC_2M.csv")
-df2 = read_comment_csv("../dataset/DMSC_10M.csv")
+df1 = read_comment_csv("../dataset/DMSC_2M.csv", 10000)
+df2 = read_comment_csv("../dataset/DMSC_10M.csv", 1)
 combined_df = concat_dataframe(df1, df2)
 
-tokenized = apply_tokenizer(combined_df['Comment'], use_stopwords=False)
-vocab = make_vocab(tokenized, min_freq=2)
-print(f"vocab len:{len(vocab)}")
+tokenized = apply_tokenizer(combined_df["Comment"], use_stopwords=True)
+vocab = make_vocab(tokenized, min_freq=4)
+print(len(vocab))
 
 df_length = tokenized.apply(len)
 filtered_df = tokenized[df_length < 64]
@@ -27,12 +27,12 @@ num_sentences_less_than = filtered_df.shape[0]
 print(num_sentences_less_than, f'{num_sentences_less_than / len(tokenized) * 100}%')
 
 padded_sequences = padding_sentences(vocab, tokenized, target_len=64)
- 
+
 comment_set = CommentSet(padded_sequences, combined_df["Star"])
-train_data = DataLoader(comment_set, batch_size=64, shuffle=True, num_workers=cpu_threads, pin_memory=True)
+train_data = DataLoader(comment_set, batch_size=32, shuffle=True, num_workers=cpu_threads, pin_memory=True)
 
 num_epochs = 10
-num_classes = 2
+num_classes = 3
 learning_rate = 0.01
 vocab_len = len(vocab)
 d_model = 1024

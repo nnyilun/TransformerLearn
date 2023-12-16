@@ -12,6 +12,8 @@ from torchtext.vocab import build_vocab_from_iterator
 import pandas as pd
 import jieba
 from pandarallel import pandarallel
+import nltk
+from nltk.corpus import stopwords
 
 
 stopwords_list_path = [
@@ -23,6 +25,8 @@ stopwords_list_path = [
 
 # tqdm.pandas()
 pandarallel.initialize(progress_bar=True)
+
+# nltk.download('stopwords')
 
 
 class CommentSet(Dataset):
@@ -36,13 +40,15 @@ class CommentSet(Dataset):
         return len(self.Comments)
 
     def __getitem__(self, idx:int) -> tuple:
-        star = self.Stars[idx] - 1
-        if star <= 3:
+        star = self.Stars[idx]
+        if 1<= star <= 3:
             label = 0
         # elif star == 3:
         #     label = 1
+        elif 4 <= star <= 5:
+            label = 2
         else:
-            label = 1
+            raise ValueError("Unknown value!")
 
         return self.Comments[idx], label
     
@@ -57,10 +63,10 @@ def concat_dataframe(df1:pd.DataFrame, df2:pd.DataFrame) -> pd.DataFrame:
     combined_star = pd.concat([df1["Star"], df2["Star"]])
     combined_df = pd.DataFrame({"Comment": combined_comment, "Star": combined_star}).dropna()
     del df1, df2
-    return combined_df
+    return combined_df[~combined_df["Star"].isin([])].reset_index()
 
 
-def load_stopwords(paths:list[str]) -> set[str]:
+def load_stopwords(paths:list[str]=stopwords_list_path) -> set[str]:
     stopwords = []
     for path in paths:
         with open(path, "r", encoding="utf-8") as f_obj:
@@ -69,19 +75,30 @@ def load_stopwords(paths:list[str]) -> set[str]:
     return set(stopwords)
 
 
-stopwords = None
 def tokenize_str(sentence:str, use_stopwords:bool=True) -> list[str]:
+    sentence = str(sentence)
     sentence = re.sub(r'[\u3000-\u303f\uff00-\uffef]', ' ', sentence)
+    sentence = sentence.replace('{html}',"") 
+    cleanr = re.compile('<.*?>')
+    sentence = re.sub(cleanr, '', sentence)
+    sentence = re.sub(r'http\S+', '',sentence)
+    sentence = re.sub('[0-9]+', '', sentence)
+
+    stop_words = set(stopwords.words('chinese'))
     seg_list = list(jieba.cut(sentence.strip(), cut_all=False))
     if use_stopwords == False:
         return seg_list
-    
-    global stopwords
-    if stopwords is None:
-        stopwords = load_stopwords(stopwords_list_path)
 
-    filtered_words = [word for word in seg_list if word not in stopwords]
-    return filtered_words
+    seg_list = [w for w in seg_list if not w.lower() in stop_words]
+    return seg_list
+    
+    
+    # global stopwords
+    # if stopwords is None:
+    #     stopwords = load_stopwords(stopwords_list_path)
+
+    # filtered_words = [word for word in seg_list if word not in stopwords]
+    # return filtered_words
 
 
 def tokenizer_(use_stopwords:bool=True):
