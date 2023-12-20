@@ -194,6 +194,10 @@ def train(
                 save_checkpoint(model, optimizer, scheduler, swa_model, swa_scheduler, epoch, filename=f"../model/bert_result/checkpoint_epoch_{epoch+1}.pth.tar")
 
         accuracy = 100 * correct / total
+        
+        if valid_loader is None and (epoch + 1) % 20 == 0:
+            save_checkpoint(model, optimizer, scheduler, swa_model, swa_scheduler, epoch, filename=f"../model/bert_result/checkpoint_epoch_{epoch+1}_{accuracy}.pth.tar")
+
         print(f"Epoch {epoch+1}, Loss: {total_loss / len(dataloader)}, Accuracy: {accuracy}%")
     
     print(f"Done! max valid accuracy: {max_valid_acc}")
