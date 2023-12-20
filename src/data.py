@@ -41,10 +41,10 @@ class CommentSet(Dataset):
 
     def __getitem__(self, idx:int) -> tuple:
         star = self.Stars[idx]
-        if 1<= star <= 3:
+        if 1<= star <= 2:
             label = 0
-        # elif star == 3:
-        #     label = 1
+        elif star == 3:
+            label = 1
         elif 4 <= star <= 5:
             label = 2
         else:
@@ -102,9 +102,9 @@ def tokenize_str(sentence:str, use_stopwords:bool=True) -> list[str]:
 
 
 def tokenizer_(use_stopwords:bool=True):
-    global stopwords
-    if use_stopwords and stopwords is None:
-        stopwords = load_stopwords(stopwords_list_path)
+    # global stopwords
+    # if use_stopwords and stopwords is None:
+    #     stopwords = load_stopwords(stopwords_list_path)
 
     tokenize_func = partial(tokenize_str, use_stopwords=True)
     return get_tokenizer(tokenize_func)
@@ -156,10 +156,11 @@ def get_dataloader(input:torch.Tensor, label:pd.Series, batch_size:int=128,
     return data_loader
 
 
-def split_dataset(comment_set:CommentSet, batch_size:int, percentage:float=0.9, cpu_threads:int=12) -> (DataLoader, DataLoader):
+def split_dataset(comment_set:CommentSet, batch_size:int, percentage:float=0.9, cpu_threads:int=12, pin_memory:bool=True) -> (DataLoader, DataLoader):
     train_size = int(len(comment_set) * percentage)
     validation_size = len(comment_set) - train_size
     # print(f"train dataset size: {train_size}, validation dataset size: {validation_size}")
     train_dataset, valid_dataset = random_split(comment_set, [train_size, validation_size])
 
-    return DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=cpu_threads, pin_memory=True), DataLoader(valid_dataset, batch_size=64, shuffle=True, num_workers=cpu_threads, pin_memory=True)
+    return (DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=cpu_threads, pin_memory=pin_memory), 
+            DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, num_workers=cpu_threads, pin_memory=pin_memory))
