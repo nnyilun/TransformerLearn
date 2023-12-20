@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.optim.swa_utils import SWALR, AveragedModel
+from torch.cuda.amp import GradScaler, autocast
 from transformers import BertTokenizer, BertForSequenceClassification, BertConfig
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
@@ -20,8 +21,14 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 batch_size = 32
 max_len = 64
 num_epochs = 200
-learning_rate = 1e-5
+
+learning_rate = 1e-6
+classifier_learning_rate = 1e-5
 final_learning_rate = 1e-7
+
+weight_decay = 0.01
+classifier_weight_decay = 0.02
+
 num_labels = 3
 train_period = 20
 swa_start = 180
@@ -30,8 +37,8 @@ pretrain_model_path = "../model/bert-base-chinese"
 config = BertConfig.from_pretrained(
     pretrain_model_path,
     num_labels=num_labels,
-    hidden_dropout_prob=0.2,
-    attention_probs_dropout_prob=0.2
+    hidden_dropout_prob=0.3,
+    attention_probs_dropout_prob=0.3
 )
 
 
@@ -137,7 +144,9 @@ def train(
         swa_start:int=5
     ) -> None:
     model.train()
+    scaler = GradScaler()
     max_valid_acc = 0.0
+
     for epoch in range(num_epochs):
         total_loss = 0
         correct = 0
@@ -150,12 +159,17 @@ def train(
 
             optimizer.zero_grad()
 
+            # with autocast():
             outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
             loss = outputs.loss
             logits = outputs.logits
 
             loss.backward()
             optimizer.step()
+                
+            # scaler.scale(loss).backward()
+            # scaler.step(optimizer)
+            # scaler.update()
 
             total_loss += loss.item()
             predicted = torch.argmax(logits, dim=1)
@@ -163,7 +177,8 @@ def train(
             correct += torch.sum(predicted == labels)
 
             progress_bar.set_description(f"Epoch {epoch+1}")
-            progress_bar.set_postfix(loss=total_loss/(i+1), accuracy=100.*correct/total, Learning_rate=optimizer.param_groups[0]['lr'])
+            lr_dict = {f'lr_group_{i}': param_group['lr'] for i, param_group in enumerate(optimizer.param_groups)}
+            progress_bar.set_postfix(loss=total_loss/(i+1), accuracy=100.*correct/total, **lr_dict)
 
             if epoch >= swa_start and swa_model is not None:
                 swa_model.update_parameters(model)
@@ -202,20 +217,25 @@ if __name__ == "__main__":
 
     combined_df["Sentiment"] = combined_df["Star"].parallel_apply(get_sentiment)
 
-    train_texts, valid_texts, train_labels, valid_labels = train_test_split(combined_df["Comment"], combined_df["Sentiment"], test_size=0.1)
+    # train_texts, valid_texts, train_labels, valid_labels = train_test_split(combined_df["Comment"], combined_df["Sentiment"], test_size=0.1)
 
     tokenizer = BertTokenizer.from_pretrained(pretrain_model_path)
 
-    train_loader = create_data_loader(train_texts, train_labels, tokenizer, max_len, batch_size)
-    valid_loader = create_data_loader(valid_texts, valid_labels, tokenizer, max_len, batch_size)
+    train_loader = create_data_loader(combined_df["Comment"], combined_df["Sentiment"], tokenizer, max_len, batch_size)
+    # valid_loader = create_data_loader(valid_texts, valid_labels, tokenizer, max_len, batch_size)
 
     model = BertForSequenceClassification(config).to(device)
-    optimizer = AdamW(model.parameters(), lr=learning_rate)
+    # optimizer = AdamW(model.parameters(), lr=learning_rate)
+    optimizer = AdamW([
+        {'params': model.bert.parameters(), 'lr': learning_rate, 'weight_decay': weight_decay},
+        {'params': model.classifier.parameters(), 'lr': classifier_learning_rate, 'weight_decay': classifier_weight_decay}
+    ], )
 
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs - swa_start)
     swa_model = AveragedModel(model)
     swa_scheduler = SWALR(optimizer, swa_lr=final_learning_rate)
 
-    train(model, optimizer, train_loader, num_epochs, device, valid_loader, scheduler, swa_model, swa_scheduler, swa_start)
+    train(model=model, optimizer=optimizer, dataloader=train_loader, num_epochs=num_epochs, device=device, 
+          scheduler=scheduler, swa_model=swa_model, swa_scheduler=swa_scheduler, swa_start=swa_start, valid_loader=None)
 
     save_model(model, filename="../model/bert_result/20231220_model.pth.tar")
